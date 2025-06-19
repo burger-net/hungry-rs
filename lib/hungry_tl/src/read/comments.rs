@@ -65,8 +65,8 @@ impl<'a> Iterator for Comments<'a> {
         let offset = self.pos;
 
         // Find comment end.
-        let (end, ended) = if let Some(length) = self.buf[self.pos..].find(start.variant.stop()) {
-            self.pos += length + start.variant.stop().len();
+        let (end, ended) = if let Some(length) = self.buf[self.pos..].find(start.variant.end()) {
+            self.pos += length + start.variant.end().len();
 
             (offset + length, true)
         } else {
@@ -184,7 +184,7 @@ impl Variant {
         }
     }
 
-    pub const fn stop(&self) -> &'static str {
+    pub const fn end(&self) -> &'static str {
         match self {
             Variant::Line => LINE_END,
             Variant::Block => BLOCK_END,
