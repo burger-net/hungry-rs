@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = ["bin/hungry_docs", "lib/hungry", "lib/hungry_tl"]

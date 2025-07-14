@@ -1,0 +1,3 @@
+[package]
+name = "hungry_docs"
+edition = "2024"
