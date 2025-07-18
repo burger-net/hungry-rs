@@ -1,5 +1,5 @@
 use std::fmt;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Range};
 
 pub const LINE_START: &str = "//";
 pub const LINE_END: &str = "\n";
@@ -29,32 +29,30 @@ impl<'a> Comments<'a> {
         self.pos
     }
 
-    fn collect_content(&mut self) -> ControlFlow<(&'a str, usize), Variant> {
+    fn collect_content(&mut self) -> ControlFlow<Range<usize>, Variant> {
         // Return previously found comment variant.
         if let Some(variant) = self.cur.take() {
             return ControlFlow::Continue(variant);
         }
 
-        let content = &self.buf[self.pos..];
-
         // Return remaining content if comment is not found.
-        let Some((variant, index)) = Comments::find_comment_start(content) else {
-            let offset = self.pos;
+        let Some((variant, index)) = Comments::find_comment_start(&self.buf[self.pos..]) else {
+            let start = self.pos;
 
             self.pos = self.buf.len();
 
-            return ControlFlow::Break((content, offset));
+            return ControlFlow::Break(start..self.pos);
         };
 
         // Return content before the comment.
         if index > 0 {
             self.cur = Some(variant);
 
-            let offset = self.pos;
+            let start = self.pos;
 
             self.pos += index;
 
-            return ControlFlow::Break((&content[..index], offset));
+            return ControlFlow::Break(start..self.pos);
         }
 
         ControlFlow::Continue(variant)
@@ -78,25 +76,25 @@ impl<'a> Comments<'a> {
         }
     }
 
-    fn find_comment_end(&mut self, variant: &Variant) -> (usize, usize, bool) {
-        let offset = self.pos;
+    fn find_comment_end(&mut self, variant: &Variant) -> (Range<usize>, bool) {
+        let start = self.pos;
 
         let pattern = variant.end();
 
-        if let Some(length) = self.buf[self.pos..].find(pattern) {
-            self.pos += length + pattern.len();
+        if let Some(index) = self.buf[self.pos..].find(pattern) {
+            self.pos += index + pattern.len();
 
-            (offset, offset + length, true)
+            (start..start + index, true)
         } else {
             self.pos = self.buf.len();
 
-            (offset, self.pos, false)
+            (start..self.pos, false)
         }
     }
 }
 
 impl<'a> Iterator for Comments<'a> {
-    type Item = Either<'a>;
+    type Item = Either;
 
     fn next(&mut self) -> Option<Self::Item> {
         debug_assert!(self.pos <= self.buf.len());
@@ -107,59 +105,37 @@ impl<'a> Iterator for Comments<'a> {
 
         let variant = match self.collect_content() {
             ControlFlow::Continue(variant) => variant,
-            ControlFlow::Break((content, offset)) => {
-                return Some(Either::Content { content, offset });
+            ControlFlow::Break(range) => {
+                return Some(Either::Content { range });
             }
         };
 
         self.pos += variant.start().len();
 
-        let (offset, end, ended) = self.find_comment_end(&variant);
+        let (range, ended) = self.find_comment_end(&variant);
 
         Some(Either::Comment {
-            comment: Comment {
-                variant,
-                content: &self.buf[offset..end],
-            },
-            offset,
+            comment: Comment { variant, range },
             ended,
         })
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub(super) enum Either<'a> {
-    Content {
-        content: &'a str,
-        offset: usize,
-    },
-    Comment {
-        comment: Comment<'a>,
-        offset: usize,
-        ended: bool,
-    },
+pub(super) enum Either {
+    Content { range: Range<usize> },
+    Comment { comment: Comment, ended: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Comment<'a> {
+pub struct Comment {
     pub variant: Variant,
-    pub content: &'a str,
+    pub range: Range<usize>,
 }
 
-impl<'a> fmt::Display for Comment<'a> {
+impl fmt::Display for Comment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} comment ({:?})", self.variant, self.content)
-    }
-}
-
-impl<'a> Comment<'a> {
-    pub fn trim(&mut self) {
-        self.content = self.content.trim()
-    }
-
-    pub fn trimmed(mut self) -> Self {
-        self.trim();
-        self
+        write!(f, "{} comment in range {:?}", self.variant, self.range)
     }
 }
 
@@ -218,20 +194,25 @@ mod tests {
     struct Offset(usize);
 
     impl Offset {
-        fn content<'a>(&mut self, content: &'a str) -> Either<'a> {
-            let offset = self.0;
+        fn content(&mut self, content: &str) -> Either {
+            let start = self.0;
             self.0 += content.len();
 
-            Either::Content { content, offset }
+            Either::Content {
+                range: start..self.0,
+            }
         }
 
-        fn comment<'a>(&mut self, content: &'a str, variant: Variant, ended: bool) -> Either<'a> {
-            let offset = self.0 + variant.start().len();
-            self.0 = offset + content.len() + variant.end().len() * ended as usize;
+        fn comment(&mut self, content: &str, variant: Variant, ended: bool) -> Either {
+            let start = self.0 + variant.start().len();
+            let end = start + content.len();
+            self.0 = end + variant.end().len() * ended as usize;
 
             Either::Comment {
-                comment: Comment { variant, content },
-                offset,
+                comment: Comment {
+                    variant,
+                    range: start..end,
+                },
                 ended,
             }
         }
