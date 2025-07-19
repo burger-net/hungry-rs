@@ -25,10 +25,6 @@ impl<'a> Comments<'a> {
         self.buf
     }
 
-    pub(super) fn pos(&self) -> usize {
-        self.pos
-    }
-
     fn collect_content(&mut self) -> ControlFlow<Range<usize>, Variant> {
         // Return previously found comment variant.
         if let Some(variant) = self.cur.take() {
