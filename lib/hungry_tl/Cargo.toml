@@ -1,3 +1,9 @@
 [package]
 name = "hungry_tl"
 edition = "2024"
+
+[features]
+default = ["meta", "code"]
+
+meta = []
+code = ["meta"]
